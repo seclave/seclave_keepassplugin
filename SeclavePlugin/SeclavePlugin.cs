@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security;
 using System.Text;
 using System.Windows.Forms;
 using KeePass.Plugins;
@@ -231,19 +232,33 @@ namespace SeclavePlugin
             ExportDatabase(m_Host.Database.RootGroup);
         }
 
+        private static bool IsSeclaveFileSystem(string format)
+        {
+            return string.Equals(format, "msdos", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(format, "vfat", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(format, "FAT", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(format, "FAT32", StringComparison.OrdinalIgnoreCase);
+        }
+
         private string GetSeclaveDevicePath()
         {
             var devices = DriveInfo.GetDrives();
             foreach (var driveInfo in devices)
             {
-                if ((driveInfo.DriveFormat == "msdos") &&
-                    (driveInfo.IsReady) &&
-                    (driveInfo.VolumeLabel.EndsWith("SECLAVE",StringComparison.CurrentCulture)))
+                try
                 {
-                    var path = driveInfo.RootDirectory.ToString();
-                    if (File.Exists(Path.Combine(path, "SCIMPORT.STE")))
-                        return path;
+                    if (driveInfo.IsReady && IsSeclaveFileSystem(driveInfo.DriveFormat) &&
+                        driveInfo.VolumeLabel.EndsWith("SECLAVE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var path = driveInfo.RootDirectory.ToString();
+                        if (File.Exists(Path.Combine(path, "SCIMPORT.STE")))
+                            return path;
+                    }
                 }
+                // A disconnected or inaccessible drive must not prevent checking other drives.
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                catch (SecurityException) { }
             }
             return null;
         }
