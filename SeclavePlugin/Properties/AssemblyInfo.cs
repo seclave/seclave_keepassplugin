@@ -1,4 +1,6 @@
-﻿using System.Reflection;
+﻿// SPDX-License-Identifier: MIT
+// Copyright 2026 Seclave AB
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -10,7 +12,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Seclave AB")]
 [assembly: AssemblyProduct("KeePass Plugin")]
-[assembly: AssemblyCopyright("Copyright © 2021")]
+[assembly: AssemblyCopyright("Copyright 2026 Seclave AB")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
