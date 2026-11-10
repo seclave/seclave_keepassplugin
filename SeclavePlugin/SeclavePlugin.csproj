@@ -40,7 +40,14 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="SeclavePlugin.cs" />
+    <Compile Include="SeclaveLabels.cs" />
+    <Compile Include="SeclaveDevice.cs" />
+    <Compile Include="SeclaveSync.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="SyncButton16.png" />
+    <EmbeddedResource Include="SyncButton32.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

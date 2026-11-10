@@ -6,7 +6,8 @@ podman build -t keepass-compile docker
 
 tar cvzf $TMPDIR/code.tgz create_plgx.sh \
 SeclavePlugin/SeclavePlugin.csproj \
-SeclavePlugin/SeclavePlugin.cs \
+SeclavePlugin/*.cs \
+SeclavePlugin/*.png \
 SeclavePlugin/Properties/AssemblyInfo.cs
 
 rm -rf output 2>/dev/null || true
