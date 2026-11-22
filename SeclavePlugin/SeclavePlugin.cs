@@ -438,6 +438,14 @@ namespace SeclavePlugin
         private ToolStripSeparator m_ToolbarSeparator;
         private ToolStripButton m_SyncButton;
 
+        // The file KeePass's update check (Help > Check for Updates) reads the
+        // newest release's version from: version.txt on this repository's main
+        // branch. KeePass only says whether the plugin is up to date.
+        public override string UpdateUrl
+        {
+            get { return "https://raw.githubusercontent.com/seclave/seclave_keepassplugin/main/version.txt"; }
+        }
+
         // A menu item that runs a command, reporting what it throws
         private static ToolStripMenuItem Item(string text, Action command)
         {

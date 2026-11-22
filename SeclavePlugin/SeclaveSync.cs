@@ -168,15 +168,22 @@ namespace SeclavePlugin
             return Fold(LabelChars.Sanitize(Field(group, Wire.MaxGroup)));
         }
 
-        // Names of the fields that differ, never their values
-        public static string Differences(DeviceEntry a, DeviceEntry b)
+        // The fields that differ, as the device would hold them: "group",
+        // "username", "password" or "notes"; never their values
+        public static List<string> DifferentFields(DeviceEntry a, DeviceEntry b)
         {
             var names = new List<string>();
             if (!SameGroup(a.Group, b.Group)) names.Add("group");
             if (Field(a.Username, Wire.MaxUsername) != Field(b.Username, Wire.MaxUsername)) names.Add("username");
             if (Field(a.Password, Wire.MaxPassword) != Field(b.Password, Wire.MaxPassword)) names.Add("password");
             if (Field(a.Optional, Wire.MaxOptional) != Field(b.Optional, Wire.MaxOptional)) names.Add("notes");
-            return string.Join(", ", names.ToArray());
+            return names;
+        }
+
+        // Names of the fields that differ, never their values
+        public static string Differences(DeviceEntry a, DeviceEntry b)
+        {
+            return string.Join(", ", DifferentFields(a, b).ToArray());
         }
 
         // What a push would change in the entry's username and notes, for the
@@ -1473,14 +1480,166 @@ namespace SeclavePlugin
         }
     }
 
+    // One row of the review, side by side: each field as KeePass would write
+    // it to the Seclave, references followed, and as the Seclave holds it,
+    // with the fields the sync counts as different highlighted. Passwords
+    // show only when asked for, and the values are labels, which offer
+    // nothing to copy. For a conflict it can also pick the version to keep.
+    public sealed class CompareForm : Form
+    {
+        // The highlight of a field the sync counts as different
+        public static readonly Color Marked = Color.FromArgb(255, 238, 150);
+
+        private readonly DeviceEntry m_keepass;
+        private readonly DeviceEntry m_seclave;
+        private readonly Label m_keepassPassword;
+        private readonly Label m_seclavePassword;
+
+        // The version picked here: UpdateDevice for KeePass's, UpdateKeePass
+        // for the Seclave's; None if the dialog was closed without a pick
+        public SyncAction Picked = SyncAction.None;
+
+        // Whether a row of the review has two versions to compare: a KeePass
+        // entry and the Seclave's copy, read, as a conflict or an update has
+        public static bool Comparable(PlanItem item)
+        {
+            return item.Entry != null && item.Device != null && item.Device.HasFields && item.Blocked == null &&
+                (item.Conflict || item.Action == SyncAction.UpdateKeePass || item.Action == SyncAction.UpdateDevice);
+        }
+
+        public CompareForm(PlanItem item)
+        {
+            m_keepass = item.Local;
+            m_seclave = item.Device;
+            Text = "Compare " + item.EntryText + " with Seclave label " + item.Label;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            // The values in a fixed-width font, in columns wide enough for the
+            // longest username or password the Seclave holds on one line
+            const int names = 12, keepass = 104, column = 370, seclave = keepass + column + 12, right = seclave + column;
+            var bold = new Font(Font, FontStyle.Bold);
+            var fixedWidth = new Font(FontFamily.GenericMonospace, Font.Size);
+
+            string action = item.ActionText;
+            if (item.Conflict && item.Action != SyncAction.None)
+                action += item.Action == SyncAction.UpdateDevice ? " (KeePass version picked)" : " (Seclave version picked)";
+            int y = Row(Cell("Action:", names, 12, keepass - names - 4, bold), Cell(action, keepass, 12, right - keepass, Font));
+            y = Row(Cell("Details:", names, y + 4, keepass - names - 4, bold), Cell(item.Reason ?? "", keepass, y + 4, right - keepass, Font));
+            y = Row(Cell("Field", names, y + 16, keepass - names - 4, bold), Cell("In KeePass", keepass, y + 16, column, bold),
+                Cell("On the Seclave", seclave, y + 16, column, bold));
+
+            List<string> different = SyncData.DifferentFields(m_keepass, m_seclave);
+            string[] fields = { "Group", "Username", "Password", "Notes" };
+            string[] ofKeePass = { m_keepass.Group, m_keepass.Username, m_keepass.Password, m_keepass.Optional };
+            string[] ofSeclave = { m_seclave.Group, m_seclave.Username, m_seclave.Password, m_seclave.Optional };
+            for (int i = 0; i < fields.Length; i++)
+            {
+                bool marked = different.Contains(fields[i].ToLowerInvariant());
+                Label name = Cell(fields[i], names, y + 4, keepass - names - 4, marked ? bold : Font);
+                Label ours = Cell(ofKeePass[i] ?? "", keepass, y + 4, column, fixedWidth);
+                Label theirs = Cell(ofSeclave[i] ?? "", seclave, y + 4, column, fixedWidth);
+                if (marked) ours.BackColor = theirs.BackColor = Marked;
+                y = Row(name, ours, theirs);
+                if (fields[i] == "Password")
+                {
+                    m_keepassPassword = ours;
+                    m_seclavePassword = theirs;
+                }
+            }
+            // Measured with the passwords, masked before the dialog is shown
+            ShowPasswords(false);
+            y = Row(Cell("The fields the sync counts as different are highlighted.", names, y + 8, right - names, Font));
+
+            var show = new CheckBox();
+            show.Text = "Show passwords";
+            show.SetBounds(names, y + 6, 200, 24);
+            show.CheckedChanged += delegate { ShowPasswords(show.Checked); };
+            Controls.Add(show);
+            y += 6 + 24 + 12;
+
+            if (item.Conflict)
+            {
+                Pick("Use KeePass version", SyncAction.UpdateDevice, names, y);
+                Pick("Use Seclave version", SyncAction.UpdateKeePass, names + 156, y);
+            }
+            var close = new Button();
+            close.Text = "Close";
+            close.DialogResult = DialogResult.Cancel;
+            close.SetBounds(right - 85, y, 85, 28);
+            Controls.Add(close);
+            AcceptButton = close;
+            CancelButton = close;
+            ClientSize = new Size(right + 12, y + 28 + 12);
+            Shown += delegate { close.Focus(); };
+        }
+
+        // A label at x,y, as wide as given and as tall as its text wraps to,
+        // the text as it is, an & included
+        private Label Cell(string text, int x, int y, int width, Font font)
+        {
+            var label = new Label();
+            label.UseMnemonic = false;
+            label.Font = font;
+            label.Text = text;
+            Size size = TextRenderer.MeasureText(text, font, new Size(width, 0), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+            label.SetBounds(x, y, width, Math.Max(size.Height, font.Height) + 4);
+            Controls.Add(label);
+            return label;
+        }
+
+        // Gives the labels of a row the height of the tallest; returns its bottom
+        private static int Row(params Label[] cells)
+        {
+            int height = 0;
+            foreach (Label cell in cells) height = Math.Max(height, cell.Height);
+            foreach (Label cell in cells) cell.Height = height;
+            return cells[0].Top + height;
+        }
+
+        private void Pick(string text, SyncAction action, int x, int y)
+        {
+            var button = new Button();
+            button.Text = text;
+            button.SetBounds(x, y, 150, 28);
+            button.Click += delegate
+            {
+                Picked = action;
+                DialogResult = DialogResult.OK;
+            };
+            Controls.Add(button);
+        }
+
+        private void ShowPasswords(bool show)
+        {
+            m_keepassPassword.Text = show ? m_keepass.Password : Masked(m_keepass.Password);
+            m_seclavePassword.Text = show ? m_seclave.Password : Masked(m_seclave.Password);
+        }
+
+        private static string Masked(string password)
+        {
+            return string.IsNullOrEmpty(password) ? "" : PwDefs.HiddenPassword;
+        }
+    }
+
     public sealed class ReviewForm : Form
     {
         private readonly ListView m_list = new ListView();
         private readonly Label m_note = new Label();
         private readonly Label m_summary = new Label();
+        private readonly Button m_compare = new Button();
+        private readonly Button m_useKeePass = new Button();
+        private readonly Button m_useSeclave = new Button();
         private readonly List<PlanItem> m_items;
+        // Each row's tick as the plan proposed it
+        private readonly List<bool> m_proposed = new List<bool>();
         private readonly int m_free;
         private readonly PromptState m_prompts;
+        // Set while the list takes the second press of a double-click, on
+        // which it would also toggle the row's tick
+        private bool m_doubleClick;
 
         public const string AllowAllCaveat = "Careful: while Allow all is set, any computer connected over USB can read " +
             "and change every entry on the Seclave without a confirmation there.";
@@ -1497,9 +1656,10 @@ namespace SeclavePlugin
             ClientSize = new Size(900, 480);
             MinimizeBox = false;
 
+            bool conflicts = items.Exists(delegate(PlanItem i) { return i.Conflict; });
             var intro = new Label();
-            intro.Text = "Read from the Seclave: " + source + ". Ticked rows are applied; nothing happens before Apply. " +
-                "Conflicts changed on both sides: select them and pick a version.";
+            intro.Text = "Read from the Seclave: " + source + ". Ticked rows are applied; nothing happens before Apply." +
+                (conflicts ? " Conflicts changed on both sides: select them and pick a version." : "");
             intro.SetBounds(12, 8, 876, 36);
             intro.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(intro);
@@ -1521,9 +1681,20 @@ namespace SeclavePlugin
                 row.Checked = item.Apply;
                 if (item.Blocked != null) row.ForeColor = SystemColors.GrayText;
                 m_list.Items.Add(row);
+                m_proposed.Add(item.Apply);
             }
             m_list.ItemCheck += OnItemCheck;
             m_list.ItemChecked += delegate { UpdateSummary(); };
+            m_list.SelectedIndexChanged += delegate { EnableSelectionButtons(); };
+            // A double-click compares the row's two versions, and leaves its tick as it was
+            m_list.MouseDown += delegate(object sender, MouseEventArgs e) { m_doubleClick = e.Clicks > 1; };
+            m_list.MouseUp += delegate { m_doubleClick = false; };
+            m_list.MouseDoubleClick += delegate(object sender, MouseEventArgs e)
+            {
+                m_doubleClick = false;
+                ListViewItem row = m_list.GetItemAt(e.X, e.Y);
+                if (row != null && CompareForm.Comparable((PlanItem)row.Tag)) Compare(row);
+            };
             Controls.Add(m_list);
 
             m_note.SetBounds(12, 344, 876, 46);
@@ -1536,18 +1707,39 @@ namespace SeclavePlugin
             m_summary.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(m_summary);
 
-            var useKeePass = new Button();
-            useKeePass.Text = "Use KeePass version";
-            useKeePass.SetBounds(12, 440, 150, 28);
-            useKeePass.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            useKeePass.Click += delegate { ResolveSelected(SyncAction.UpdateDevice); };
-            Controls.Add(useKeePass);
-            var useSeclave = new Button();
-            useSeclave.Text = "Use Seclave version";
-            useSeclave.SetBounds(168, 440, 150, 28);
-            useSeclave.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            useSeclave.Click += delegate { ResolveSelected(SyncAction.UpdateKeePass); };
-            Controls.Add(useSeclave);
+            // The ticks of every row at once, the comparison of a row's two
+            // versions, then the versions to pick for a conflict, shown only
+            // when the plan has one
+            var untick = new Button();
+            untick.Text = "Untick all";
+            untick.SetBounds(12, 440, 120, 28);
+            untick.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            untick.Click += delegate { UntickAll(); };
+            Controls.Add(untick);
+            var proposed = new Button();
+            proposed.Text = "Tick as proposed";
+            proposed.SetBounds(138, 440, 120, 28);
+            proposed.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            proposed.Click += delegate { TickAsProposed(); };
+            Controls.Add(proposed);
+            m_compare.Text = "Compare...";
+            m_compare.SetBounds(276, 440, 90, 28);
+            m_compare.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            m_compare.Click += delegate { Compare(m_list.SelectedItems[0]); };
+            Controls.Add(m_compare);
+            m_useKeePass.Text = "Use KeePass version";
+            m_useKeePass.SetBounds(372, 440, 150, 28);
+            m_useKeePass.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            m_useKeePass.Visible = conflicts;
+            m_useKeePass.Click += delegate { ResolveSelected(SyncAction.UpdateDevice); };
+            Controls.Add(m_useKeePass);
+            m_useSeclave.Text = "Use Seclave version";
+            m_useSeclave.SetBounds(528, 440, 150, 28);
+            m_useSeclave.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            m_useSeclave.Visible = conflicts;
+            m_useSeclave.Click += delegate { ResolveSelected(SyncAction.UpdateKeePass); };
+            Controls.Add(m_useSeclave);
+            EnableSelectionButtons();
 
             var apply = new Button();
             apply.Text = "Apply";
@@ -1569,6 +1761,11 @@ namespace SeclavePlugin
 
         private void OnItemCheck(object sender, ItemCheckEventArgs e)
         {
+            if (m_doubleClick)
+            {
+                e.NewValue = e.CurrentValue;
+                return;
+            }
             var item = (PlanItem)m_list.Items[e.Index].Tag;
             if (item.Blocked != null || (item.Conflict && item.Action == SyncAction.None))
                 e.NewValue = CheckState.Unchecked;
@@ -1576,16 +1773,68 @@ namespace SeclavePlugin
                 item.Apply = e.NewValue == CheckState.Checked;
         }
 
-        private void ResolveSelected(SyncAction action)
+        // The version buttons act on the conflict rows selected, whether a
+        // version is picked for them yet or not; Compare on one row with two
+        // versions to compare
+        private void EnableSelectionButtons()
         {
+            bool conflict = false;
             foreach (ListViewItem row in m_list.SelectedItems)
+                if (((PlanItem)row.Tag).Conflict) conflict = true;
+            m_useKeePass.Enabled = conflict;
+            m_useSeclave.Enabled = conflict;
+            m_compare.Enabled = m_list.SelectedItems.Count == 1 && CompareForm.Comparable((PlanItem)m_list.SelectedItems[0].Tag);
+        }
+
+        // The row's two versions side by side; a version picked there
+        // resolves the conflict as the review's buttons do
+        private void Compare(ListViewItem row)
+        {
+            using (var form = new CompareForm((PlanItem)row.Tag))
+            {
+                Dialogs.ShowDialog(form, this);
+                if (form.Picked != SyncAction.None) Resolve(row, form.Picked);
+            }
+        }
+
+        // Every row unticked but a link, which only records that both sides
+        // are the same: without it, a later change to the entry would come
+        // up as a conflict instead of an update. A tick set here goes through
+        // OnItemCheck, as a click does.
+        private void UntickAll()
+        {
+            foreach (ListViewItem row in m_list.Items)
+                if (((PlanItem)row.Tag).Action != SyncAction.Link) row.Checked = false;
+        }
+
+        // Every row back to the tick the plan proposed, a conflict whose
+        // version is picked ticked, as the pick ticked it. There is no tick
+        // for every row: the plan leaves rows unticked on purpose, such as
+        // the delete of what may be a last copy.
+        private void TickAsProposed()
+        {
+            foreach (ListViewItem row in m_list.Items)
             {
                 var item = (PlanItem)row.Tag;
-                if (!item.Conflict) continue;
-                Planner.Resolve(item, action);
-                row.SubItems[0].Text = item.ActionText;
-                row.Checked = item.Apply;
+                row.Checked = item.Conflict ? item.Action != SyncAction.None : m_proposed[row.Index];
             }
+        }
+
+        private void ResolveSelected(SyncAction action)
+        {
+            foreach (ListViewItem row in m_list.SelectedItems) Resolve(row, action);
+        }
+
+        // The user's pick for a conflict row. The summary follows also when the
+        // tick stays, as from one version to the other.
+        private void Resolve(ListViewItem row, SyncAction action)
+        {
+            var item = (PlanItem)row.Tag;
+            if (!item.Conflict) return;
+            Planner.Resolve(item, action);
+            row.SubItems[0].Text = item.ActionText;
+            row.Checked = item.Apply;
+            UpdateSummary();
         }
 
         // The presses the Seclave asks for to apply the item in the Normal

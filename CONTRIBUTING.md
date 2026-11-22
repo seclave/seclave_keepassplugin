@@ -69,7 +69,12 @@ is plain POSIX `sh`, so that it runs as `/bin/sh` on every distribution.
 
 Releases are made by Seclave from tagged commits, by the release workflow
 (`.github/workflows/release.yml`), which attaches the `.plgx` and
-`linux/install-udev-rule.sh`.
+`linux/install-udev-rule.sh`. A release commit sets its version in three
+places: `AssemblyVersion` and `AssemblyFileVersion` in
+`SeclavePlugin/Properties/AssemblyInfo.cs`, and `version.txt`, the file
+KeePass's update check reads from `main` (a line of the `AssemblyTitle`,
+`SeclavePlugin`, and the version, between two lines of `:`). The workflow
+refuses a tag that disagrees with any of them.
 
 ## License
 

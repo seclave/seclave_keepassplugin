@@ -7,6 +7,10 @@ workflow, which attests what it built. To check a download:
 
     gh attestation verify SeclavePlugin.plgx --owner seclave
 
+From 3.0.1 on, KeePass's update check (Help > Check for Updates) also says
+when a newer release of the plugin is out: it reads `version.txt` in this
+repository. It only tells; a newer release is installed as above.
+
 ## Linux: the Seclave's serial port
 
 Linux lets only root and the `dialout` group open a serial port, and
@@ -103,7 +107,9 @@ To sync:
 4. The review shows what the sync would change, on the Seclave and in
    KeePass. Ticked rows are applied, and nothing changes until you click
    Apply. An entry that is only on the Seclave is offered for KeePass,
-   unticked.
+   unticked. Untick all unticks every row except "Link (no change)", which
+   only records an entry that is the same on both sides; Tick as proposed
+   puts every row back as the plugin proposed it.
 
    ![The review of a first sync](docs/screenshots/review.png)
 
@@ -164,8 +170,15 @@ the Seclave, and entries changed on the Seclave (a password you changed
 there, say) to update in KeePass. Nothing changes until you press Apply.
 
 - Each synced entry remembers what the Seclave last held for it, so the
-  plugin can tell which side changed. When both did, it shows a conflict and
-  you pick the version to keep; it never chooses for you.
+  plugin can tell which side changed. When both did, it shows a conflict,
+  "Conflict: choose", and you pick the version to keep: select the row and
+  click Use KeePass version or Use Seclave version, buttons the review shows
+  only when it has a conflict. It never chooses for you. To see both
+  versions first, select the row and click Compare..., or double-click it:
+  a dialog lists the group, username, password and notes in KeePass and on
+  the Seclave, highlights the fields that differ, and shows the passwords
+  only when you tick Show passwords; you can pick the version there too. It
+  also shows the two versions of an entry updated either way.
 - Before an entry is updated from the Seclave, KeePass's own history keeps
   the previous version, so the update can be undone from the entry's History
   tab. A database set to keep no history (Database Settings > History)

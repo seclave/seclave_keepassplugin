@@ -71,6 +71,15 @@ runs can open the port, as the plugin does, so what stands between such a
 program and the entries is the confirmation the Seclave asks for on its own
 screen in its Normal security mode.
 
+**KeePass's update check.** The plugin itself opens no network connection.
+It names `version.txt` on this repository's main branch as its version
+file: when KeePass checks for updates (Help > Check for Updates, or at
+startup if that is on), it downloads that file from GitHub and shows
+whether a newer release of the plugin is out. The request carries nothing
+from the database; it tells GitHub only that the computer runs KeePass
+with this plugin. The file is not signed, and changing it could at most
+make KeePass show a wrong version: KeePass installs nothing from it.
+
 **The Seclave's confirmation is its security boundary.** In the Normal
 security mode the Seclave shows on its own screen each read and each change
 the sync asks for, and goes ahead only on a press of its joystick, which no

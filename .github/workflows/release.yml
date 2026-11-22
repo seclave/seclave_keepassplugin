@@ -1,9 +1,9 @@
-# Tag-driven release: push v<version> (matching AssemblyVersion in
-# SeclavePlugin/Properties/AssemblyInfo.cs) and the .plgx is built, then
-# checksummed and attached, with the Linux udev script, to a DRAFT GitHub
-# release for the owner to review and publish. workflow_dispatch runs the
-# build without a release, whatever ref it runs on. The tests are run before
-# tagging, outside GitHub.
+# Tag-driven release: push v<version> (matching the versions in
+# SeclavePlugin/Properties/AssemblyInfo.cs and version.txt) and the .plgx
+# is built, then checksummed and attached, with the Linux udev script, to a
+# DRAFT GitHub release for the owner to review and publish.
+# workflow_dispatch runs the build without a release, whatever ref it runs
+# on. The tests are run before tagging, outside GitHub.
 #
 # No secrets are used anywhere, and nothing is signed: integrity comes from
 # SHA256SUMS.txt, authenticity from the artifact attestation below. Every
@@ -31,14 +31,19 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-      - name: Tag matches AssemblyVersion
-        # A -rc.N / -beta suffix on the tag is ignored: rc tags rehearse the
+      - name: Tag matches the versions in the tree
+        # AssemblyVersion, AssemblyFileVersion, the version KeePass's update
+        # check compares, and version.txt, the file it reads from main. A
+        # -rc.N / -beta suffix on the tag is ignored: rc tags rehearse the
         # release of the version they point at.
         run: |
-          app=$(sed -n 's/^\[assembly: AssemblyVersion("\([0-9]*\.[0-9]*\.[0-9]*\)\..*/\1/p' SeclavePlugin/Properties/AssemblyInfo.cs)
           tag="${GITHUB_REF_NAME#v}"; tag="${tag%%-*}"
-          echo "tag=$tag app=$app"
-          [ "$tag" = "$app" ]
+          for attr in AssemblyVersion AssemblyFileVersion; do
+            app=$(sed -n "s/^\[assembly: $attr(\"\([0-9]*\.[0-9]*\.[0-9]*\)\..*/\1/p" SeclavePlugin/Properties/AssemblyInfo.cs)
+            echo "tag=$tag $attr=$app"
+            [ "$tag" = "$app" ]
+          done
+          printf ':\nSeclavePlugin:%s\n:\n' "$tag" | cmp - version.txt
 
   build:
     runs-on: ubuntu-latest

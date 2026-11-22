@@ -36,8 +36,7 @@ namespace SeclavePlugin
         public const int OpDelEntry = 10;
         public const int OpGetBackup = 12;
         public const int OpQueryStatus = 13;        // firmware 2.7 and later only
-        // Firmware 2.7 and later have it, but 2.7 sends a label of 16 characters
-        // and a group of 8 one character short, so it is used from 2.8 only
+        // Used only on firmware newer than 2.7 (see ListLabels)
         public const int OpGetLabelGroupIdx = 14;
 
         public const int StOk = 0;
@@ -439,11 +438,9 @@ namespace SeclavePlugin
             int.TryParse(r.Text(2), out Total);
         }
 
-        // Every label, and from firmware 2.8 its group. One "Show all labels"
-        // confirmation covers the whole walk. Firmware 2.7 has the
-        // label-and-group enumeration too, but returns a label that fills all
-        // 16 characters, or a group that fills all 8, one character short
-        // there, so on 2.7 only the labels are listed, as on 2.6.
+        // Every label, and on firmware newer than 2.7 its group. One "Show all
+        // labels" confirmation covers the whole walk. On 2.7 and earlier only
+        // the labels are listed, and each group is read with its entry.
         public List<DeviceEntry> ListLabels()
         {
             bool withGroups = AtLeast(2, 8);
